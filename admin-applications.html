@@ -216,8 +216,8 @@ function startListening(){
 function tierFor(cap){
   if (cap == null) return null;
   if (cap >= 100) return 'Multi-location — Contact us';
-  if (cap >= 7) return 'Mid — $4,800/yr';
-  return 'Small — $2,400/yr';
+  if (cap >= 7) return 'Mid Market — $4,800/yr';
+  return 'Emerging Market — $2,400/yr';
 }
 
 function render(){
@@ -252,12 +252,13 @@ async function openDetail(a){
     ['Contact', a.contactName], ['Email', a.email], ['Phone', a.phone],
     ['Address', a.address], ['City / State / ZIP', `${a.city}, ${a.state} ${a.zip||''}`],
     ['Public address?', a.addressPublic ? 'Yes' : 'No'],
-    ['Website', a.website || '—'], ['Capacity given', a.capacity ?? '—'],
+    ['Website', a.website || '—'], ['Email for families', a.publicEmail || '—'], ['Capacity given', a.capacity ?? '—'],
     ['Description', a.description]
   ];
   $('detail').innerHTML = `
     <div class="d-head">
       <img class="bloom" src="${LOTUS}" style="opacity:${stage.icon_op};transform:scale(${stage.icon_scale})">
+      ${a.logo && a.logo.startsWith('data:image/') ? `<img src="${a.logo}" alt="Logo" style="width:72px;height:72px;object-fit:contain;border:1px solid var(--line);border-radius:14px;background:#fff;padding:6px;margin:6px 0">` : '<div style="font-size:12.5px;color:var(--muted)">No logo uploaded</div>'}
       <h2>${esc(a.businessName)}</h2>
       <div class="loc">${esc(a.providerType)} · ${esc(a.city)}, ${esc(a.state)}</div>
     </div>
@@ -275,7 +276,7 @@ async function openDetail(a){
   } else if (a.status === 'in_progress'){
     actions.innerHTML = `<button class="btn btn-primary" id="btnApprove">Approve & publish</button>
       <button class="btn btn-danger" id="btnReject">Reject</button>`;
-    $('btnApprove').onclick = () => approve(a);
+    $('btnApprove').onclick = async () => { const b=$('btnApprove'); b.disabled=true; b.textContent='Publishing…'; try { await approve(a); } catch(e){ console.error(e); b.disabled=false; b.textContent='Approve & publish'; toast('Couldn\u2019t publish: '+(e.code||e.message)); } };
     $('btnReject').onclick = () => setStatus(a.id, 'rejected');
   } else if (a.status === 'approved'){
     const pSnap = await getDoc(doc(db, 'providers', a.id));
@@ -320,10 +321,11 @@ async function approve(a){
     businessName: a.businessName, providerType: a.providerType,
     city: a.city, state: a.state, status: 'approved',
     lotusRating: 0, reviewCount: 0, description: a.description,
-    phone: a.phone, website: a.website || '',
+    phone: a.phone, website: a.website || '', email: a.publicEmail || '',
+    logo: (a.logo && a.logo.startsWith('data:image/')) ? a.logo : '',
     patientAdvocate: '', advocateConfirmed: false
   };
-  if (a.addressPublic) publicDoc.address = a.address;
+  if (a.addressPublic) { publicDoc.address = a.address; publicDoc.zip = a.zip || ''; publicDoc.addressPublic = true; }
 
   const privateDoc = {
     contactName: a.contactName, email: a.email, address: a.address,
@@ -335,9 +337,13 @@ async function approve(a){
   await setDoc(doc(db, 'providers_private', id), privateDoc);
   await setDoc(doc(db, 'providers_private', id, 'codes', code), { active: true, createdAt: serverTimestamp() });
   if (a.uid) {
-    await setDoc(doc(db, 'users', a.uid), { role: 'provider', providerId: id }, { merge: true });
+    // never downgrade an admin account to provider
+    const u = await getDoc(doc(db, 'users', a.uid));
+    const isAdminAcct = u.exists() && u.data().role === 'admin';
+    await setDoc(doc(db, 'users', a.uid), isAdminAcct ? { providerId: id } : { role: 'provider', providerId: id }, { merge: true });
   }
   await updateDoc(doc(db, 'applications', id), { status: 'approved', reviewCode: code });
+  $('detail').close();
   toast('Approved and published');
 }
 

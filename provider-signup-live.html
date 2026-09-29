@@ -48,6 +48,7 @@ legend{font-family:"Fraunces",serif;font-size:1.15rem;font-weight:600;margin-bot
 input,select,textarea{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);font:inherit;font-size:15px;color:var(--ink);outline:none;transition:border-color .2s}
 input:focus,select:focus,textarea:focus{border-color:var(--teal)}
 textarea{min-height:96px;resize:vertical}
+.missing{border-color:#B23A2A!important;background:color-mix(in srgb,#B23A2A 6%,var(--card))}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media (max-width:520px){.row2{grid-template-columns:1fr}}
 .check{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--muted);line-height:1.5}
@@ -123,6 +124,11 @@ textarea{min-height:96px;resize:vertical}
         <div class="field"><label for="description">A few sentences families would read</label>
           <textarea id="description" required placeholder="What you do, and what makes your care what it is."></textarea>
         </div>
+        <div class="field"><label for="logo">Your logo <span class="opt">(recommended, families see it on your profile)</span></label>
+          <input id="logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+          <div class="hint">PNG or JPG, square works best. We shrink it automatically.</div>
+          <img id="logoPreview" alt="" style="display:none;width:88px;height:88px;object-fit:contain;margin-top:10px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:6px">
+        </div>
       </fieldset>
 
       <fieldset>
@@ -143,6 +149,7 @@ textarea{min-height:96px;resize:vertical}
           <div class="field"><label for="phone">Phone</label><input id="phone" type="tel" required></div>
           <div class="field"><label for="website">Website <span class="opt">(optional)</span></label><input id="website" type="url" placeholder="https://"></div>
         </div>
+        <div class="field"><label for="publicEmail">Email for families <span class="opt">(optional, shown on your profile)</span></label><input id="publicEmail" type="email" placeholder="info@yourcare.com"></div>
       </fieldset>
 
       <fieldset>
@@ -207,6 +214,27 @@ function updateTierHint(){
 }
 $('capacity').addEventListener('input', updateTierHint);
 
+let LOGO_DATA = '';
+async function shrinkLogo(file){
+  const url = URL.createObjectURL(file);
+  const img = await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=url; });
+  const max = 256, s = Math.min(1, max/Math.max(img.naturalWidth||max, img.naturalHeight||max));
+  const w = Math.max(1, Math.round((img.naturalWidth||max)*s)), h = Math.max(1, Math.round((img.naturalHeight||max)*s));
+  const c = document.createElement('canvas'); c.width=w; c.height=h;
+  c.getContext('2d').drawImage(img,0,0,w,h); URL.revokeObjectURL(url);
+  let out = c.toDataURL('image/webp', 0.85);
+  if (!out.startsWith('data:image/webp') || out.length > 150000) out = c.toDataURL('image/png');
+  if (out.length > 300000) out = c.toDataURL('image/jpeg', 0.8);
+  return out;
+}
+$('logo').addEventListener('change', async e => {
+  const f = e.target.files[0]; LOGO_DATA=''; $('logoPreview').style.display='none';
+  if (!f) return;
+  try { LOGO_DATA = await shrinkLogo(f); $('logoPreview').src = LOGO_DATA; $('logoPreview').style.display='block'; }
+  catch(err){ console.error(err); alert('We couldn\u2019t read that image. Please try a PNG or JPG.'); e.target.value=''; }
+});
+
+
 
 $('signupForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -215,10 +243,14 @@ $('signupForm').addEventListener('submit', async (e) => {
 
   const required = ['businessName','providerType','description','address','city','state','zip',
     'contactName','phone','email','password','password2'];
-  for (const id of required){
-    if (!$(id).value || !$(id).value.trim()){
-      msg.textContent = 'Please fill in every required field.'; msg.className = 'msg error'; return;
-    }
+  document.querySelectorAll('.missing').forEach(el => el.classList.remove('missing'));
+  const missing = required.filter(id => !$(id).value || !$(id).value.trim());
+  if (missing.length){
+    missing.forEach(id => $(id).classList.add('missing'));
+    const names = missing.map(id => (document.querySelector(`label[for="${id}"]`)?.childNodes[0]?.textContent || id).trim());
+    msg.textContent = 'Please fill in: ' + names.join(', ') + '.'; msg.className = 'msg error';
+    $(missing[0]).focus(); $(missing[0]).scrollIntoView({block:'center', behavior:'smooth'});
+    return;
   }
   if (!$('terms').checked){
     msg.textContent = 'Please agree to the terms to continue.'; msg.className = 'msg error'; return;
@@ -255,6 +287,8 @@ $('signupForm').addEventListener('submit', async (e) => {
       phone: $('phone').value.trim(),
       website: $('website').value.trim(),
       email: $('email').value.trim(),
+      publicEmail: $('publicEmail').value.trim(),
+      logo: LOGO_DATA,
       status: 'pending',
       createdAt: serverTimestamp()
     });

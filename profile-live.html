@@ -220,7 +220,8 @@ async function load(){
   const reviews = p.reviewCount ? ` · ${p.reviewCount} family review${p.reviewCount===1?'':'s'}` : '';
   $('content').innerHTML = `<article class="pcard big ${spot?'spot':''}">
     <div class="pc-top">
-      <div><h1 class="pc-name">${esc(p.businessName)}</h1><div class="pc-loc">📍 ${esc(p.city)}, ${esc(p.state)}</div></div>
+      ${p.logo && p.logo.startsWith('data:image/') ? `<img src="${p.logo}" alt="${esc(p.businessName)} logo" style="width:84px;height:84px;object-fit:contain;border:1px solid var(--line);border-radius:18px;background:#fff;padding:8px;flex:0 0 auto">` : ''}
+      <div style="flex:1"><h1 class="pc-name">${esc(p.businessName)}</h1><div class="pc-loc">📍 ${esc(p.city)}, ${esc(p.state)}</div></div>
       <span class="badge badge-type">${esc(LABEL[p.providerType]||p.providerType||'Provider')}</span>
     </div>
     ${spot ? '<span class="badge badge-spot" style="align-self:flex-start">✨ Lotus Spotlight</span>' : ''}
@@ -230,11 +231,13 @@ async function load(){
     <div class="info">
       <div><b>Location</b>${addr}</div>
       ${p.phone ? `<div><b>Phone</b><a href="tel:${esc(tel)}">${esc(p.phone)}</a></div>` : ''}
+      ${p.email ? `<div><b>Email</b><a href="mailto:${esc(p.email)}">${esc(p.email)}</a></div>` : ''}
       ${site ? `<div><b>Website</b><a href="${esc(site)}" target="_blank" rel="noopener">${esc(p.website)}</a></div>` : ''}
       ${p.patientAdvocate ? `<div><b>Patient advocate</b>${esc(p.patientAdvocate)}</div>` : ''}
     </div>
     <div class="pc-actions">
       ${tel ? `<a class="btn btn-primary" href="tel:${esc(tel)}">Call ${esc(p.phone)}</a>` : ''}
+      ${p.email ? `<a class="btn btn-ghost" href="mailto:${esc(p.email)}">Email</a>` : ''}
       ${site ? `<a class="btn btn-ghost" href="${esc(site)}" target="_blank" rel="noopener">Visit website</a>` : ''}
     </div>
   </article>`;
