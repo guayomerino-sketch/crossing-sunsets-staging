@@ -132,7 +132,7 @@ dialog::backdrop{background:rgba(10,34,38,.55)}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBpTRxCp3dNvwvRC9hOxVuGCA4iKpupNoE",
@@ -321,7 +321,7 @@ async function approve(a){
     businessName: a.businessName, providerType: a.providerType,
     city: a.city, state: a.state, status: 'approved',
     lotusRating: 0, reviewCount: 0, description: a.description,
-    phone: a.phone, website: a.website || '', email: a.publicEmail || '',
+    phone: a.phone, website: /\./.test(a.website||'') ? a.website : '', email: a.publicEmail || '',
     logo: (a.logo && a.logo.startsWith('data:image/')) ? a.logo : '',
     patientAdvocate: '', advocateConfirmed: false
   };
@@ -333,16 +333,18 @@ async function approve(a){
     approvedAt: serverTimestamp()
   };
 
-  await setDoc(doc(db, 'providers', id), publicDoc);
-  await setDoc(doc(db, 'providers_private', id), privateDoc);
-  await setDoc(doc(db, 'providers_private', id, 'codes', code), { active: true, createdAt: serverTimestamp() });
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'providers', id), publicDoc);
+  batch.set(doc(db, 'providers_private', id), privateDoc);
+  batch.set(doc(db, 'providers_private', id, 'codes', code), { active: true, createdAt: serverTimestamp() });
   if (a.uid) {
     // never downgrade an admin account to provider
     const u = await getDoc(doc(db, 'users', a.uid));
     const isAdminAcct = u.exists() && u.data().role === 'admin';
-    await setDoc(doc(db, 'users', a.uid), isAdminAcct ? { providerId: id } : { role: 'provider', providerId: id }, { merge: true });
+    batch.set(doc(db, 'users', a.uid), isAdminAcct ? { providerId: id } : { role: 'provider', providerId: id }, { merge: true });
   }
-  await updateDoc(doc(db, 'applications', id), { status: 'approved', reviewCode: code });
+  batch.update(doc(db, 'applications', id), { status: 'approved', reviewCode: code });
+  await batch.commit();
   $('detail').close();
   toast('Approved and published');
 }

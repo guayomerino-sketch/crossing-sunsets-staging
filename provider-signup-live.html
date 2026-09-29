@@ -136,7 +136,7 @@ textarea{min-height:96px;resize:vertical}
         <div class="field"><label for="address">Street address</label><input id="address" required></div>
         <div class="row2">
           <div class="field"><label for="city">City</label><input id="city" required></div>
-          <div class="field"><label for="state">State</label><input id="state" maxlength="2" placeholder="CA" required></div>
+          <div class="field"><label for="state">State</label><input id="state" maxlength="2" placeholder="e.g. CA" required></div>
         </div>
         <div class="field"><label for="zip">ZIP</label><input id="zip" required></div>
         <div class="check"><input id="addressPublic" type="checkbox"><label for="addressPublic">Show my street address on my public profile. Families will see it. City and state are always shown either way.</label></div>
@@ -252,6 +252,9 @@ $('signupForm').addEventListener('submit', async (e) => {
     $(missing[0]).focus(); $(missing[0]).scrollIntoView({block:'center', behavior:'smooth'});
     return;
   }
+  // clean up pasted emails/websites
+  ['email','publicEmail'].forEach(id => { const el=$(id); if (el) el.value = el.value.trim().replace(/^mailto:/i,''); });
+  if (!/\./.test($('website').value)) $('website').value = '';
   if (!$('terms').checked){
     msg.textContent = 'Please agree to the terms to continue.'; msg.className = 'msg error'; return;
   }
@@ -299,10 +302,12 @@ $('signupForm').addEventListener('submit', async (e) => {
     console.error(err);
     if (err.code === 'auth/email-already-in-use'){
       msg.textContent = 'That email already has an account. Try signing in instead.';
+    } else if (err.code === 'auth/invalid-email'){
+      msg.textContent = 'That email address doesn\u2019t look right. Please check it (no spaces or \u201cmailto:\u201d).';
     } else if (err.code === 'auth/weak-password'){
       msg.textContent = 'Please choose a stronger password.';
     } else {
-      msg.textContent = 'Something went wrong. Please try again.';
+      msg.textContent = 'Something went wrong (' + (err.code || 'unknown') + '). Please try again.';
     }
     msg.className = 'msg error';
     btn.disabled = false; btn.textContent = 'Submit application';

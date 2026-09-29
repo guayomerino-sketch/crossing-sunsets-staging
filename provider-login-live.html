@@ -155,11 +155,12 @@ const STATUS = {
   approved:    {label:'Approved',       text:"You're approved. Welcome to Crossing Sunsets — we'll be in touch about next steps."}
 };
 
+const cleanEmail = v => String(v||'').trim().replace(/^mailto:/i,'').replace(/[.,;]+$/,'');
 function setMsg(t, kind='error'){ const m=$('msg'); m.textContent=t; m.className='msg '+(t?kind:''); }
 
 $('loginForm').addEventListener('submit', async e => {
   e.preventDefault(); setMsg('');
-  const email=$('email').value.trim(), pw=$('password').value;
+  const email=cleanEmail($('email').value), pw=$('password').value;
   if(!email||!pw){ setMsg('Please enter your email and password.'); return; }
   const btn=$('loginBtn'); btn.disabled=true; btn.textContent='Signing in…';
   try { await signInWithEmailAndPassword(auth, email, pw); }
@@ -168,7 +169,7 @@ $('loginForm').addEventListener('submit', async e => {
 });
 
 $('forgotBtn').addEventListener('click', async () => {
-  const email=$('email').value.trim();
+  const email=cleanEmail($('email').value);
   if(!email){ setMsg('Enter your email above first, then click "Forgot password?".'); return; }
   try { await sendPasswordResetEmail(auth, email); setMsg('Reset email sent — check your inbox.','success'); }
   catch(err){ setMsg('Could not send a reset email. Check the address and try again.'); }
@@ -194,32 +195,36 @@ async function showBeds(user){
       <p>Families and social workers can search for providers with open beds. Update this whenever a bed opens or fills. Listings not updated in 7 days show "call to confirm".</p>
       <div class="beds-grid">
         <div><label for="bedsAvail">Beds available now</label>
-          <div class="stepper"><button type="button" data-d="-1" aria-label="One less">−</button><input id="bedsAvail" type="number" min="0" max="1000" inputmode="numeric" value="${p.availableBeds ?? 0}"><button type="button" data-d="1" aria-label="One more">+</button></div></div>
+          <div class="stepper"><button type="button" data-d="-1" aria-label="One less">−</button><input id="bedsAvail" type="text" pattern="[0-9]*" min="0" max="1000" inputmode="numeric" value="${p.availableBeds ?? 0}"><button type="button" data-d="1" aria-label="One more">+</button></div></div>
         <div><label for="bedsTotal">Total licensed beds</label>
-          <div class="stepper"><input id="bedsTotal" type="number" min="0" max="1000" inputmode="numeric" value="${p.totalBeds ?? ''}" placeholder="e.g. 6" style="width:120px"></div></div>
+          <div class="stepper"><input id="bedsTotal" type="text" pattern="[0-9]*" min="0" max="1000" inputmode="numeric" value="${p.totalBeds ?? ''}" placeholder="e.g. 6" style="width:120px"></div></div>
       </div>
       <div class="beds-actions"><button type="button" class="beds-save" id="bedsSave">Update availability</button><button type="button" class="beds-none" id="bedsNone">No beds right now</button></div>
       <p class="beds-msg" id="bedsMsg">Last updated: ${esc(upd)}</p>`;
+    document.querySelectorAll('.beds-card').forEach(el => el.remove());
     $('statusList').appendChild(card);
+    const q = s => card.querySelector(s);
     card.querySelectorAll('.stepper button[data-d]').forEach(b => b.onclick = () => {
-      const i = $('bedsAvail'); i.value = Math.max(0, (parseInt(i.value)||0) + parseInt(b.dataset.d));
+      const i = q('#bedsAvail'); i.value = Math.max(0, (parseInt(i.value)||0) + parseInt(b.dataset.d));
     });
     const save = async (avail) => {
-      const total = parseInt($('bedsTotal').value), a = parseInt(avail);
-      const msg = $('bedsMsg');
+      const total = parseInt(String(q('#bedsTotal').value).replace(/\D/g,''),10), a = parseInt(String(avail).replace(/\D/g,''),10);
+      const msg = q('#bedsMsg');
       if (!(total >= 1 && total <= 1000)){ msg.style.color='#B23A2A'; msg.textContent='Please enter your total licensed beds.'; return; }
       if (!(a >= 0) || a > total){ msg.style.color='#B23A2A'; msg.textContent='Available beds must be between 0 and your total beds.'; return; }
       try {
         await updateDoc(doc(db,'providers',pid), { availableBeds: a, totalBeds: total, bedsUpdatedAt: serverTimestamp() });
-        $('bedsAvail').value = a; msg.style.color='#0B6B3A'; msg.textContent = `Saved. Families now see ${a === 0 ? 'no beds available' : a + ' bed' + (a===1?'':'s') + ' available'}.`;
+        q('#bedsAvail').value = a; msg.style.color='#0B6B3A'; msg.textContent = `Saved. Families now see ${a === 0 ? 'no beds available' : a + ' bed' + (a===1?'':'s') + ' available'}.`;
       } catch(err){ console.error(err); msg.style.color='#B23A2A'; msg.textContent = 'Couldn’t save (' + (err.code||err.message) + ').'; }
     };
-    $('bedsSave').onclick = () => save($('bedsAvail').value);
-    $('bedsNone').onclick = () => save(0);
+    q('#bedsSave').onclick = () => save(q('#bedsAvail').value);
+    q('#bedsNone').onclick = () => save(0);
   } catch(e){ console.error(e); }
 }
 
+let authRun = 0;
 onAuthStateChanged(auth, async user => {
+  const run = ++authRun;
   if(!user){ $('loginView').style.display='block'; $('statusView').style.display='none'; return; }
   $('loginView').style.display='none'; $('statusView').style.display='block';
   const list=$('statusList'); list.innerHTML='<p class="lead">Loading…</p>';
@@ -233,7 +238,7 @@ onAuthStateChanged(auth, async user => {
       const a=d.data(), st=STATUS[a.status] || {label:a.status||'Unknown', text:''};
       return `<div class="status-card"><h2>${esc(a.businessName)}</h2><p>${esc(a.city)}${a.state?', '+esc(a.state):''}</p><span class="pill ${esc(a.status)}">${esc(st.label)}</span><p>${esc(st.text)}</p></div>`;
     }).join('');
-    if (snap.docs.some(d => d.data().status === 'approved')) await showBeds(user);
+    if (run === authRun && snap.docs.some(d => d.data().status === 'approved')) await showBeds(user);
   } catch(err){
     console.error(err);
     list.innerHTML = '<div class="status-card"><h2>Couldn\u2019t load your status</h2><p>Please try again in a moment.</p><p style="font-size:12px;opacity:.6">Error: '+esc(err.code||err.message||'unknown')+'</p></div>';
