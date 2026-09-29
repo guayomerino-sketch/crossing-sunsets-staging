@@ -78,6 +78,18 @@ textarea{min-height:96px;resize:vertical}
 .status-card{margin-top:32px;border:1px solid var(--line);border-radius:16px;background:var(--card);padding:22px 24px}
 .status-card h2{font-size:1.25rem}
 .status-card p{color:var(--muted);line-height:1.55;margin:8px 0 0}
+.beds-card{border-color:color-mix(in srgb,#0B6B3A 35%,var(--line))}
+.beds-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+@media (max-width:520px){.beds-grid{grid-template-columns:1fr}}
+.beds-grid label{font-size:13px;font-weight:600;display:block;margin-bottom:6px}
+.stepper{display:flex;align-items:center;gap:8px}
+.stepper button{width:44px;height:44px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);font-size:20px;font-weight:700;cursor:pointer;color:var(--ink)}
+.stepper input{width:80px;height:44px;text-align:center;font-size:18px;font-weight:700;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.beds-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.beds-actions button{height:46px;padding:0 22px;border-radius:999px;font:inherit;font-weight:600;cursor:pointer}
+.beds-save{background:#0B6B3A;color:#fff;border:none}
+.beds-none{background:transparent;border:1.5px solid var(--line);color:var(--ink)}
+.beds-msg{font-size:13.5px;margin-top:10px;min-height:18px}
 .pill{display:inline-block;margin-top:12px;padding:5px 12px;border-radius:999px;font-size:13px;font-weight:600;background:var(--line);color:var(--ink)}
 .pill.approved{background:color-mix(in srgb,var(--teal) 18%,var(--card));color:var(--teal)}
 .pill.in_progress{background:color-mix(in srgb,var(--gold) 20%,var(--card));color:var(--gold)}
@@ -121,7 +133,7 @@ textarea{min-height:96px;resize:vertical}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, query, where, getDocs, doc, getDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBpTRxCp3dNvwvRC9hOxVuGCA4iKpupNoE",
@@ -164,6 +176,49 @@ $('forgotBtn').addEventListener('click', async () => {
 
 $('signoutBtn').addEventListener('click', () => signOut(auth));
 
+
+const BED_TYPES = ['skilled_nursing','boarding_care','dd_home','assisted_living','memory_care'];
+async function showBeds(user){
+  try {
+    const u = await getDoc(doc(db,'users',user.uid));
+    const pid = u.exists() ? u.data().providerId : null;
+    if (!pid) return;
+    const ps = await getDoc(doc(db,'providers',pid));
+    if (!ps.exists()) return;
+    const p = ps.data();
+    if (!BED_TYPES.includes(p.providerType)) return;
+    const upd = p.bedsUpdatedAt?.toDate ? p.bedsUpdatedAt.toDate().toLocaleString() : 'never';
+    const card = document.createElement('div');
+    card.className = 'status-card beds-card';
+    card.innerHTML = `<h2>🛏 Bed availability</h2>
+      <p>Families and social workers can search for providers with open beds. Update this whenever a bed opens or fills. Listings not updated in 7 days show "call to confirm".</p>
+      <div class="beds-grid">
+        <div><label for="bedsAvail">Beds available now</label>
+          <div class="stepper"><button type="button" data-d="-1" aria-label="One less">−</button><input id="bedsAvail" type="number" min="0" max="1000" inputmode="numeric" value="${p.availableBeds ?? 0}"><button type="button" data-d="1" aria-label="One more">+</button></div></div>
+        <div><label for="bedsTotal">Total licensed beds</label>
+          <div class="stepper"><input id="bedsTotal" type="number" min="0" max="1000" inputmode="numeric" value="${p.totalBeds ?? ''}" placeholder="e.g. 6" style="width:120px"></div></div>
+      </div>
+      <div class="beds-actions"><button type="button" class="beds-save" id="bedsSave">Update availability</button><button type="button" class="beds-none" id="bedsNone">No beds right now</button></div>
+      <p class="beds-msg" id="bedsMsg">Last updated: ${esc(upd)}</p>`;
+    $('statusList').appendChild(card);
+    card.querySelectorAll('.stepper button[data-d]').forEach(b => b.onclick = () => {
+      const i = $('bedsAvail'); i.value = Math.max(0, (parseInt(i.value)||0) + parseInt(b.dataset.d));
+    });
+    const save = async (avail) => {
+      const total = parseInt($('bedsTotal').value), a = parseInt(avail);
+      const msg = $('bedsMsg');
+      if (!(total >= 1 && total <= 1000)){ msg.style.color='#B23A2A'; msg.textContent='Please enter your total licensed beds.'; return; }
+      if (!(a >= 0) || a > total){ msg.style.color='#B23A2A'; msg.textContent='Available beds must be between 0 and your total beds.'; return; }
+      try {
+        await updateDoc(doc(db,'providers',pid), { availableBeds: a, totalBeds: total, bedsUpdatedAt: serverTimestamp() });
+        $('bedsAvail').value = a; msg.style.color='#0B6B3A'; msg.textContent = `Saved. Families now see ${a === 0 ? 'no beds available' : a + ' bed' + (a===1?'':'s') + ' available'}.`;
+      } catch(err){ console.error(err); msg.style.color='#B23A2A'; msg.textContent = 'Couldn’t save (' + (err.code||err.message) + ').'; }
+    };
+    $('bedsSave').onclick = () => save($('bedsAvail').value);
+    $('bedsNone').onclick = () => save(0);
+  } catch(e){ console.error(e); }
+}
+
 onAuthStateChanged(auth, async user => {
   if(!user){ $('loginView').style.display='block'; $('statusView').style.display='none'; return; }
   $('loginView').style.display='none'; $('statusView').style.display='block';
@@ -178,6 +233,7 @@ onAuthStateChanged(auth, async user => {
       const a=d.data(), st=STATUS[a.status] || {label:a.status||'Unknown', text:''};
       return `<div class="status-card"><h2>${esc(a.businessName)}</h2><p>${esc(a.city)}${a.state?', '+esc(a.state):''}</p><span class="pill ${esc(a.status)}">${esc(st.label)}</span><p>${esc(st.text)}</p></div>`;
     }).join('');
+    if (snap.docs.some(d => d.data().status === 'approved')) await showBeds(user);
   } catch(err){
     console.error(err);
     list.innerHTML = '<div class="status-card"><h2>Couldn\u2019t load your status</h2><p>Please try again in a moment.</p><p style="font-size:12px;opacity:.6">Error: '+esc(err.code||err.message||'unknown')+'</p></div>';
