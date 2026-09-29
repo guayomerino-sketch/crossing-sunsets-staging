@@ -140,7 +140,7 @@ footer .muted{font-size:13px;color:var(--muted)}
     <div class="navlinks">
       <a href="#network">Lotus Network</a>
       <a href="#spotlight">How Spotlight works</a>
-      <a href="#" class="cta">For providers</a>
+      <a href="partners-portal-immersive.html" class="cta">For providers</a>
     </div>
   </nav>
 </header>
@@ -254,7 +254,7 @@ function card(p){
     ${p.patientAdvocate ? `<div style="font-size:13px;color:var(--muted)">👤 Patient advocate: ${esc(p.patientAdvocate)}</div>` : ''}
     <div class="pc-actions">
       ${p.phone ? `<a class="btn btn-primary" href="tel:${esc((p.phone||'').replace(/[^\d+]/g,''))}">Call</a>` : '<span class="btn btn-primary" style="opacity:.4;pointer-events:none">No phone listed</span>'}
-      <a class="btn btn-ghost" href="profile.html?id=${encodeURIComponent(p.id)}">Profile</a>
+      <a class="btn btn-ghost" href="profile-live.html?id=${encodeURIComponent(p.id)}">Profile</a>
     </div>
   </article>`;
 }
